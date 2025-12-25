@@ -6,22 +6,27 @@ let currentPaperId = null;
 let draggedElement = null;
 let currentScale = 1;
 
-// DOM元素
-const elements = {
-    loginBtn: document.getElementById('loginBtn'),
-    logoutBtn: document.getElementById('logoutBtn'),
-    loginModal: document.getElementById('loginModal'),
-    loginForm: document.getElementById('loginForm'),
-    editModal: document.getElementById('editModal'),
-    imageModal: document.getElementById('imageModal'),
-    modalImage: document.getElementById('modalImage'),
-    homepageInput: document.getElementById('homepageInput'),
-    keyInput: document.getElementById('keyInput'),
-    imageLoading: document.getElementById('imageLoading'),
-    zoomInBtn: document.getElementById('zoomInBtn'),
-    zoomOutBtn: document.getElementById('zoomOutBtn'),
-    resetZoomBtn: document.getElementById('resetZoomBtn')
-};
+// DOM元素引用
+let elements = {};
+
+// 初始化DOM元素引用
+function initElements() {
+    elements = {
+        loginBtn: document.getElementById('loginBtn'),
+        logoutBtn: document.getElementById('logoutBtn'),
+        loginModal: document.getElementById('loginModal'),
+        loginForm: document.getElementById('loginForm'),
+        editModal: document.getElementById('editModal'),
+        imageModal: document.getElementById('imageModal'),
+        modalImage: document.getElementById('modalImage'),
+        homepageInput: document.getElementById('homepageInput'),
+        keyInput: document.getElementById('keyInput'),
+        imageLoading: document.getElementById('imageLoading'),
+        zoomInBtn: document.getElementById('zoomInBtn'),
+        zoomOutBtn: document.getElementById('zoomOutBtn'),
+        resetZoomBtn: document.getElementById('resetZoomBtn')
+    };
+}
 
 // 数据管理类
 class DataManager {
@@ -76,7 +81,7 @@ class IndexedDBManager {
             request.onupgradeneeded = (event) => {
                 const db = event.target.result;
                 if (!db.objectStoreNames.contains(this.storeName)) {
-                    const objectStore = db.createObjectStore(this.storeName', { keyPath: 'paperId' });
+                    const objectStore = db.createObjectStore(this.storeName, { keyPath: 'paperId' });
                     objectStore.createIndex('paperId', 'paperId', { unique: true });
                     console.log('IndexedDB对象存储创建成功');
                 }
@@ -95,9 +100,9 @@ class IndexedDBManager {
                 
                 const completeData = {
                     paperId: paperId,
-                    backgroundContent: data.backgroundContent || '暂无研究背景信息',
-                    mainContent: data.mainContent || '暂无研究内容信息',
-                    conclusionContent: data.conclusionContent || '暂无研究结论信息',
+                    backgroundContent: data.backgroundContent || '请添加研究背景信息',
+                    mainContent: data.mainContent || '请添加研究内容信息',
+                    conclusionContent: data.conclusionContent || '请添加研究结论信息',
                     linkContent: data.linkContent || '暂无全文链接',
                     homepageImages: data.homepageImages || [],
                     keyImages: data.keyImages || []
@@ -151,16 +156,16 @@ class IndexedDBManager {
 async function initializePage() {
     console.log('开始初始化论文详情页');
     
+    // 初始化DOM元素引用
+    initElements();
+    
     // 检查登录状态
     isLoggedIn = sessionStorage.getItem('isLoggedIn') === 'true';
     console.log('登录状态:', isLoggedIn);
     
     // 获取URL参数中的论文ID
     const urlParams = new URLSearchParams(window.location.search);
-    currentPaperId = urlParams.get('id');
-    if (!currentPaperId) {
-        currentPaperId = '1'; // 默认ID
-    }
+    currentPaperId = parseInt(urlParams.get('id')) || 1;
     console.log('当前论文ID:', currentPaperId);
     
     try {
@@ -188,7 +193,7 @@ async function initializePage() {
         const fadeElements = document.querySelectorAll('.fade-in');
         if (fadeElements.length > 0) {
             anime({
-                targets: fadeElements,
+                targets: '.fade-in',
                 opacity: [0, 1],
                 translateY: [30, 0],
                 duration: 800,
@@ -208,7 +213,7 @@ async function loadPaperBasicInfo() {
         const projectData = DataManager.load('projectData');
         
         if (projectData && projectData.papers) {
-            const paper = projectData.papers.find(p => p.id.toString() === currentPaperId.toString());
+            const paper = projectData.papers.find(p => p.id === currentPaperId);
             if (paper) {
                 console.log('从localStorage找到论文基本信息:', paper);
                 renderPaperBasicInfo(paper);
@@ -230,7 +235,7 @@ async function loadPaperBasicInfo() {
                     papers = jsonData.projectData.papers || [];
                 }
                 
-                const paper = papers.find(p => p.id.toString() === currentPaperId.toString());
+                const paper = papers.find(p => p.id === currentPaperId);
                 if (paper) {
                     console.log('从data.json找到论文基本信息:', paper);
                     renderPaperBasicInfo(paper);
@@ -280,7 +285,7 @@ function renderPaperBasicInfo(paper) {
     if (authorsElement) authorsElement.textContent = paper.authors || '';
 }
 
-// 加载论文详情数据 - 修复版，确保能正确加载main.js导出的数据
+// 加载论文详情数据 - 修复版
 async function loadPaperDetails() {
     console.log(`开始加载论文${currentPaperId}的详情数据`);
     
@@ -289,7 +294,7 @@ async function loadPaperDetails() {
     // 尝试顺序：1. IndexedDB, 2. localStorage, 3. paperDetails.json
     try {
         // 1. 从IndexedDB加载
-        const indexedDBData = await IndexedDBManager.getPaperDetails(parseInt(currentPaperId));
+        const indexedDBData = await IndexedDBManager.getPaperDetails(currentPaperId);
         if (indexedDBData) {
             console.log(`从IndexedDB获取到论文${currentPaperId}的详情`, indexedDBData);
             paperDetails = indexedDBData;
@@ -307,7 +312,7 @@ async function loadPaperDetails() {
         }
     }
     
-    // 3. 从paperDetails.json加载 - 这是主要的数据来源（main.js导出的）
+    // 3. 从paperDetails.json加载
     if (!paperDetails) {
         try {
             console.log('尝试从paperDetails.json加载数据...');
@@ -318,16 +323,35 @@ async function loadPaperDetails() {
                 
                 // 检查数据格式
                 if (jsonData && typeof jsonData === 'object') {
-                    // 格式：{ "1": {...}, "2": {...} } (main.js导出的格式)
+                    // 格式1: { "1": {...}, "2": {...} }
                     if (jsonData[currentPaperId]) {
                         paperDetails = jsonData[currentPaperId];
-                        console.log(`找到论文${currentPaperId}的详情:`, paperDetails);
+                        console.log(`从对象格式找到论文${currentPaperId}的详情:`, paperDetails);
                     }
-                    // 也支持其他格式
-                    else if (jsonData[parseInt(currentPaperId)]) {
-                        paperDetails = jsonData[parseInt(currentPaperId)];
-                        console.log(`找到论文${currentPaperId}的详情（数字键）:`, paperDetails);
+                    // 格式2: [{paperId: 1, ...}, {paperId: 2, ...}]
+                    else if (Array.isArray(jsonData)) {
+                        console.log('数据是数组格式，搜索论文ID:', currentPaperId);
+                        const item = jsonData.find(item => {
+                            const id = item.paperId || item.id;
+                            return id && parseInt(id) === currentPaperId;
+                        });
+                        
+                        if (item) {
+                            paperDetails = item;
+                            console.log(`从数组格式找到论文${currentPaperId}的详情:`, paperDetails);
+                        }
                     }
+                }
+                
+                if (paperDetails) {
+                    console.log(`从paperDetails.json成功找到论文${currentPaperId}的详情`);
+                    
+                    // 保存到localStorage和IndexedDB
+                    const localPaperDetails = DataManager.load('paperDetails', {});
+                    localPaperDetails[currentPaperId] = paperDetails;
+                    DataManager.save('paperDetails', localPaperDetails);
+                    
+                    await IndexedDBManager.savePaperDetails(currentPaperId, paperDetails);
                 }
             }
         } catch (error) {
@@ -339,20 +363,27 @@ async function loadPaperDetails() {
     if (!paperDetails) {
         console.log(`为论文${currentPaperId}创建默认详情数据`);
         paperDetails = {
-            backgroundContent: '暂无研究背景信息',
-            mainContent: '暂无研究内容信息',
-            conclusionContent: '暂无研究结论信息',
+            backgroundContent: '请添加研究背景信息',
+            mainContent: '请添加研究内容信息',
+            conclusionContent: '请添加研究结论信息',
             linkContent: '暂无全文链接',
             homepageImages: [],
             keyImages: []
         };
+        
+        // 保存默认数据
+        const localPaperDetails = DataManager.load('paperDetails', {});
+        localPaperDetails[currentPaperId] = paperDetails;
+        DataManager.save('paperDetails', localPaperDetails);
+        
+        await IndexedDBManager.savePaperDetails(currentPaperId, paperDetails);
     }
     
     // 确保数据结构完整
     const completePaperDetails = {
-        backgroundContent: paperDetails.backgroundContent || '暂无研究背景信息',
-        mainContent: paperDetails.mainContent || '暂无研究内容信息',
-        conclusionContent: paperDetails.conclusionContent || '暂无研究结论信息',
+        backgroundContent: paperDetails.backgroundContent || '请添加研究背景信息',
+        mainContent: paperDetails.mainContent || '请添加研究内容信息',
+        conclusionContent: paperDetails.conclusionContent || '请添加研究结论信息',
         linkContent: paperDetails.linkContent || '暂无全文链接',
         homepageImages: paperDetails.homepageImages || [],
         keyImages: paperDetails.keyImages || []
@@ -392,7 +423,7 @@ function renderPaperDetails(paperDetails) {
 
 // 格式化文本为段落
 function formatTextWithParagraphs(text) {
-    if (!text || text.trim() === '' || text === '暂无研究背景信息' || text === '暂无研究内容信息' || text === '暂无研究结论信息') {
+    if (!text || text.trim() === '' || text === '请添加研究背景信息' || text === '请添加研究内容信息' || text === '请添加研究结论信息') {
         return '<p class="text-gray-500 italic">暂无内容</p>';
     }
     
@@ -409,17 +440,23 @@ function formatTextWithParagraphs(text) {
 
 // 格式化链接
 function formatLinkContent(content) {
-    if (!content || content.trim() === '' || content === '暂无全文链接') {
+    if (!content || content.trim() === '' || content === '请添加全文链接' || content === '暂无全文链接') {
         return '暂无全文链接';
     }
     
     content = content.trim();
     
     // 检查是否为URL
-    const isUrl = content.startsWith('http://') || content.startsWith('https://');
+    const isUrl = content.startsWith('http://') || content.startsWith('https://') || 
+                  content.startsWith('www.');
     
     if (isUrl) {
-        return `<a href="${content}" target="_blank" class="text-blue-600 hover:text-blue-800 underline break-all">${content}</a>`;
+        let url = content;
+        if (!url.startsWith('http://') && !url.startsWith('https://')) {
+            url = 'https://' + url;
+        }
+        
+        return `<a href="${url}" target="_blank" class="text-blue-600 hover:text-blue-800 underline break-all">${content}</a>`;
     }
     
     return content;
@@ -438,7 +475,7 @@ function renderImages(containerId, images) {
         return;
     }
     
-    console.log(`渲染图片到 ${containerId}:`, images.length, '张');
+    console.log(`渲染图片到 ${containerId}:`, images);
     
     container.innerHTML = images.map((image, index) => {
         let imageUrl = image;
@@ -462,7 +499,7 @@ function renderImages(containerId, images) {
             </div>
             ` : ''}
         </div>
-    `).join('');
+    `}).join('');
 }
 
 // 初始化拖拽功能
@@ -486,6 +523,7 @@ function initDragAndDropForContainer(container, containerId) {
     const items = container.querySelectorAll('.image-item');
     
     items.forEach(item => {
+        // 添加事件监听器
         item.addEventListener('dragstart', handleDragStart);
         item.addEventListener('dragover', handleDragOver);
         item.addEventListener('drop', (e) => handleDrop(e, containerId));
@@ -556,15 +594,15 @@ function handleDragEnd() {
 // 获取当前论文详情数据
 async function getCurrentPaperDetails() {
     // 先尝试从IndexedDB获取
-    let paperDetails = await IndexedDBManager.getPaperDetails(parseInt(currentPaperId));
+    let paperDetails = await IndexedDBManager.getPaperDetails(currentPaperId);
     
     if (!paperDetails) {
         // 从localStorage获取
         const localPaperDetails = DataManager.load('paperDetails', {});
         paperDetails = localPaperDetails[currentPaperId] || {
-            backgroundContent: '暂无研究背景信息',
-            mainContent: '暂无研究内容信息',
-            conclusionContent: '暂无研究结论信息',
+            backgroundContent: '请添加研究背景信息',
+            mainContent: '请添加研究内容信息',
+            conclusionContent: '请添加研究结论信息',
             linkContent: '暂无全文链接',
             homepageImages: [],
             keyImages: []
@@ -573,9 +611,9 @@ async function getCurrentPaperDetails() {
     
     // 确保数据结构完整
     return {
-        backgroundContent: paperDetails.backgroundContent || '暂无研究背景信息',
-        mainContent: paperDetails.mainContent || '暂无研究内容信息',
-        conclusionContent: paperDetails.conclusionContent || '暂无研究结论信息',
+        backgroundContent: paperDetails.backgroundContent || '请添加研究背景信息',
+        mainContent: paperDetails.mainContent || '请添加研究内容信息',
+        conclusionContent: paperDetails.conclusionContent || '请添加研究结论信息',
         linkContent: paperDetails.linkContent || '暂无全文链接',
         homepageImages: paperDetails.homepageImages || [],
         keyImages: paperDetails.keyImages || []
@@ -590,21 +628,20 @@ async function savePaperDetails(paperDetails) {
     DataManager.save('paperDetails', localPaperDetails);
     
     // 保存到IndexedDB
-    await IndexedDBManager.savePaperDetails(parseInt(currentPaperId), paperDetails);
+    await IndexedDBManager.savePaperDetails(currentPaperId, paperDetails);
 }
 
 // 打开图片模态框
 function openImageModal(imageSrc) {
-    if (elements.modalImage) {
+    if (elements.imageModal && elements.modalImage) {
         // 重置缩放比例
         currentScale = 1;
         elements.modalImage.style.transform = 'scale(1)';
         
         // 设置图片源
         elements.modalImage.src = imageSrc;
-    }
-    
-    if (elements.imageModal) {
+        
+        // 显示模态框
         elements.imageModal.classList.add('show');
     }
 }
