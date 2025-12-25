@@ -1,4 +1,4 @@
-// paper-detail.js - 修复版
+// paper-detail.js - 修复版（完整）
 // 全局变量
 let isLoggedIn = false;
 let currentEditData = null;
@@ -19,7 +19,7 @@ const elements = {
     keyInput: document.getElementById('keyInput'),
     imageLoading: document.getElementById('imageLoading'),
     zoomInBtn: document.getElementById('zoomInBtn'),
-    zoomOutBtn: document.getElementById('resetZoomBtn'),
+    zoomOutBtn: document.getElementById('zoomOutBtn'),
     resetZoomBtn: document.getElementById('resetZoomBtn')
 };
 
@@ -365,7 +365,7 @@ async function loadPaperDetails() {
                 
                 // 检查数据格式并提取
                 if (detailsData && typeof detailsData === 'object') {
-                    // 格式1: { "1": {...}, "2": {...} }
+                    // 格式1: { "1": {...}, "2": {...} } (main.js导出的格式)
                     if (detailsData[currentPaperId]) {
                         paperDetails = detailsData[currentPaperId];
                         console.log(`从对象格式找到论文${currentPaperId}的详情:`, paperDetails);
@@ -399,9 +399,9 @@ async function loadPaperDetails() {
                     
                     // 确保数据结构完整
                     paperDetails = {
-                        backgroundContent: paperDetails.backgroundContent || '暂无研究背景信息',
-                        mainContent: paperDetails.mainContent || '暂无研究内容信息',
-                        conclusionContent: paperDetails.conclusionContent || '暂无研究结论信息',
+                        backgroundContent: paperDetails.backgroundContent || '请添加研究背景信息',
+                        mainContent: paperDetails.mainContent || '请添加研究内容信息',
+                        conclusionContent: paperDetails.conclusionContent || '请添加研究结论信息',
                         linkContent: paperDetails.linkContent || '暂无全文链接',
                         homepageImages: paperDetails.homepageImages || [],
                         keyImages: paperDetails.keyImages || []
@@ -467,7 +467,7 @@ function renderPaperDetails(paperDetails) {
 
 // 格式化文本为段落
 function formatTextWithParagraphs(text) {
-    if (!text || text.trim() === '') {
+    if (!text || text.trim() === '' || text === '请添加研究背景信息' || text === '请添加研究内容信息' || text === '请添加研究结论信息') {
         return '<p class="text-gray-500 italic">暂无内容</p>';
     }
     
@@ -486,7 +486,7 @@ function formatTextWithParagraphs(text) {
 
 // 格式化链接
 function formatLinkContent(content) {
-    if (!content || content.trim() === '') {
+    if (!content || content.trim() === '' || content === '请添加全文链接' || content === '暂无全文链接') {
         return '暂无全文链接';
     }
     
@@ -519,6 +519,7 @@ function renderImages(containerId, images) {
     
     if (!images || images.length === 0) {
         container.innerHTML = '<p class="text-gray-500 text-center py-8">暂无图片</p>';
+        console.log(`容器 ${containerId} 没有图片数据`);
         return;
     }
     
@@ -554,7 +555,7 @@ function renderImages(containerId, images) {
             </div>
             ` : ''}
         </div>
-    `}).join('');
+    `).join('');
     
     // 图片加载错误处理
     container.querySelectorAll('img').forEach(img => {
