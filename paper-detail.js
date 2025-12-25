@@ -1,27 +1,32 @@
-// paper-detail.js - 修复版（完整）
+// paper-detail.js - 完整修复版
 // 全局变量
 let isLoggedIn = false;
 let currentEditData = null;
 let currentPaperId = null;
 let draggedElement = null;
-let currentScale = 1; // 图片当前缩放比例
+let currentScale = 1;
 
-// DOM元素
-const elements = {
-    loginBtn: document.getElementById('loginBtn'),
-    logoutBtn: document.getElementById('logoutBtn'),
-    loginModal: document.getElementById('loginModal'),
-    loginForm: document.getElementById('loginForm'),
-    editModal: document.getElementById('editModal'),
-    imageModal: document.getElementById('imageModal'),
-    modalImage: document.getElementById('modalImage'),
-    homepageInput: document.getElementById('homepageInput'),
-    keyInput: document.getElementById('keyInput'),
-    imageLoading: document.getElementById('imageLoading'),
-    zoomInBtn: document.getElementById('zoomInBtn'),
-    zoomOutBtn: document.getElementById('zoomOutBtn'),
-    resetZoomBtn: document.getElementById('resetZoomBtn')
-};
+// DOM元素引用
+let elements = {};
+
+// 初始化DOM元素引用
+function initElements() {
+    elements = {
+        loginBtn: document.getElementById('loginBtn'),
+        logoutBtn: document.getElementById('logoutBtn'),
+        loginModal: document.getElementById('loginModal'),
+        loginForm: document.getElementById('loginForm'),
+        editModal: document.getElementById('editModal'),
+        imageModal: document.getElementById('imageModal'),
+        modalImage: document.getElementById('modalImage'),
+        homepageInput: document.getElementById('homepageInput'),
+        keyInput: document.getElementById('keyInput'),
+        imageLoading: document.getElementById('imageLoading'),
+        zoomInBtn: document.getElementById('zoomInBtn'),
+        zoomOutBtn: document.getElementById('zoomOutBtn'),
+        resetZoomBtn: document.getElementById('resetZoomBtn')
+    };
+}
 
 // 数据管理类
 class DataManager {
@@ -95,9 +100,9 @@ class IndexedDBManager {
                 
                 const completeData = {
                     paperId: paperId,
-                    backgroundContent: data.backgroundContent || '暂无研究背景信息',
-                    mainContent: data.mainContent || '暂无研究内容信息',
-                    conclusionContent: data.conclusionContent || '暂无研究结论信息',
+                    backgroundContent: data.backgroundContent || '请添加研究背景信息',
+                    mainContent: data.mainContent || '请添加研究内容信息',
+                    conclusionContent: data.conclusionContent || '请添加研究结论信息',
                     linkContent: data.linkContent || '暂无全文链接',
                     homepageImages: data.homepageImages || [],
                     keyImages: data.keyImages || []
@@ -145,42 +150,14 @@ class IndexedDBManager {
             return null;
         }
     }
-
-    // 获取所有论文详情
-    static async getAllPaperDetails() {
-        try {
-            await this.init();
-            
-            return new Promise((resolve) => {
-                const transaction = this.db.transaction([this.storeName], 'readonly');
-                const objectStore = transaction.objectStore(this.storeName);
-                const request = objectStore.getAll();
-                
-                request.onsuccess = (event) => {
-                    const result = {};
-                    event.target.result.forEach(item => {
-                        if (item && item.paperId) {
-                            result[item.paperId] = item;
-                        }
-                    });
-                    resolve(result);
-                };
-                
-                request.onerror = (event) => {
-                    console.error('获取所有数据失败:', event.target.error);
-                    resolve({});
-                };
-            });
-        } catch (error) {
-            console.error('IndexedDB操作失败:', error);
-            return {};
-        }
-    }
 }
 
 // 页面初始化
 async function initializePage() {
     console.log('开始初始化论文详情页');
+    
+    // 初始化DOM元素引用
+    initElements();
     
     // 检查登录状态
     isLoggedIn = sessionStorage.getItem('isLoggedIn') === 'true';
@@ -213,14 +190,17 @@ async function initializePage() {
     
     // 添加动画效果
     setTimeout(() => {
-        anime({
-            targets: '.fade-in',
-            opacity: [0, 1],
-            translateY: [30, 0],
-            duration: 800,
-            delay: anime.stagger(200),
-            easing: 'easeOutQuad'
-        });
+        const fadeElements = document.querySelectorAll('.fade-in');
+        if (fadeElements.length > 0) {
+            anime({
+                targets: '.fade-in',
+                opacity: [0, 1],
+                translateY: [30, 0],
+                duration: 800,
+                delay: anime.stagger(200),
+                easing: 'easeOutQuad'
+            });
+        }
     }, 100);
 }
 
@@ -294,10 +274,15 @@ async function loadPaperBasicInfo() {
 
 // 渲染论文基本信息
 function renderPaperBasicInfo(paper) {
-    document.getElementById('paperTitle').textContent = paper.title || `论文 #${currentPaperId}`;
-    document.getElementById('paperJournal').textContent = paper.journal || '';
-    document.getElementById('paperTime').textContent = paper.time || '';
-    document.getElementById('paperAuthors').textContent = paper.authors || '';
+    const titleElement = document.getElementById('paperTitle');
+    const journalElement = document.getElementById('paperJournal');
+    const timeElement = document.getElementById('paperTime');
+    const authorsElement = document.getElementById('paperAuthors');
+    
+    if (titleElement) titleElement.textContent = paper.title || `论文 #${currentPaperId}`;
+    if (journalElement) journalElement.textContent = paper.journal || '';
+    if (timeElement) timeElement.textContent = paper.time || '';
+    if (authorsElement) authorsElement.textContent = paper.authors || '';
 }
 
 // 加载论文详情数据 - 修复版
@@ -324,88 +309,42 @@ async function loadPaperDetails() {
         if (localPaperDetails[currentPaperId]) {
             console.log(`从localStorage获取到论文${currentPaperId}的详情`, localPaperDetails[currentPaperId]);
             paperDetails = localPaperDetails[currentPaperId];
-            
-            // 确保数据结构完整
-            paperDetails = {
-                backgroundContent: paperDetails.backgroundContent || '暂无研究背景信息',
-                mainContent: paperDetails.mainContent || '暂无研究内容信息',
-                conclusionContent: paperDetails.conclusionContent || '暂无研究结论信息',
-                linkContent: paperDetails.linkContent || '暂无全文链接',
-                homepageImages: paperDetails.homepageImages || [],
-                keyImages: paperDetails.keyImages || []
-            };
-            
-            // 保存回IndexedDB
-            IndexedDBManager.savePaperDetails(currentPaperId, paperDetails);
         }
     }
     
-    // 3. 从paperDetails.json加载 - 修复版
+    // 3. 从paperDetails.json加载
     if (!paperDetails) {
         try {
             console.log('尝试从paperDetails.json加载数据...');
             const response = await fetch('paperDetails.json');
             if (response.ok) {
-                let jsonData = await response.json();
-                console.log('从paperDetails.json加载的原始数据:', jsonData);
+                const jsonData = await response.json();
+                console.log('从paperDetails.json加载的数据:', jsonData);
                 
-                // 处理不同的数据格式
-                let detailsData = jsonData;
-                
-                // 如果数据是字符串，尝试解析
-                if (typeof jsonData === 'string') {
-                    try {
-                        detailsData = JSON.parse(jsonData);
-                        console.log('解析后的数据:', detailsData);
-                    } catch (e) {
-                        console.error('解析JSON失败:', e);
-                        detailsData = {};
-                    }
-                }
-                
-                // 检查数据格式并提取
-                if (detailsData && typeof detailsData === 'object') {
-                    // 格式1: { "1": {...}, "2": {...} } (main.js导出的格式)
-                    if (detailsData[currentPaperId]) {
-                        paperDetails = detailsData[currentPaperId];
+                // 检查数据格式
+                if (jsonData && typeof jsonData === 'object') {
+                    // 格式1: { "1": {...}, "2": {...} }
+                    if (jsonData[currentPaperId]) {
+                        paperDetails = jsonData[currentPaperId];
                         console.log(`从对象格式找到论文${currentPaperId}的详情:`, paperDetails);
-                    } 
+                    }
                     // 格式2: [{paperId: 1, ...}, {paperId: 2, ...}]
-                    else if (Array.isArray(detailsData)) {
+                    else if (Array.isArray(jsonData)) {
                         console.log('数据是数组格式，搜索论文ID:', currentPaperId);
-                        const item = detailsData.find(item => {
-                            // 尝试不同的ID字段名
-                            const id = item.paperId || item.id || item.PaperID;
+                        const item = jsonData.find(item => {
+                            const id = item.paperId || item.id;
                             return id && parseInt(id) === currentPaperId;
                         });
                         
                         if (item) {
                             paperDetails = item;
                             console.log(`从数组格式找到论文${currentPaperId}的详情:`, paperDetails);
-                        } else {
-                            console.log(`在数组中未找到论文ID为${currentPaperId}的项目`);
-                            console.log('所有可用的项目:', detailsData.map(d => ({ id: d.id, paperId: d.paperId })));
                         }
-                    }
-                    // 格式3: 直接是论文详情对象
-                    else if (detailsData.paperId === currentPaperId || detailsData.id === currentPaperId) {
-                        paperDetails = detailsData;
-                        console.log(`从直接对象格式找到论文${currentPaperId}的详情:`, paperDetails);
                     }
                 }
                 
                 if (paperDetails) {
                     console.log(`从paperDetails.json成功找到论文${currentPaperId}的详情`);
-                    
-                    // 确保数据结构完整
-                    paperDetails = {
-                        backgroundContent: paperDetails.backgroundContent || '请添加研究背景信息',
-                        mainContent: paperDetails.mainContent || '请添加研究内容信息',
-                        conclusionContent: paperDetails.conclusionContent || '请添加研究结论信息',
-                        linkContent: paperDetails.linkContent || '暂无全文链接',
-                        homepageImages: paperDetails.homepageImages || [],
-                        keyImages: paperDetails.keyImages || []
-                    };
                     
                     // 保存到localStorage和IndexedDB
                     const localPaperDetails = DataManager.load('paperDetails', {});
@@ -413,13 +352,7 @@ async function loadPaperDetails() {
                     DataManager.save('paperDetails', localPaperDetails);
                     
                     await IndexedDBManager.savePaperDetails(currentPaperId, paperDetails);
-                    
-                    console.log(`论文${currentPaperId}的详情数据已保存到本地存储`);
-                } else {
-                    console.log(`在paperDetails.json中未找到论文${currentPaperId}的详情数据`);
                 }
-            } else {
-                console.log('paperDetails.json文件不存在或无法访问');
             }
         } catch (error) {
             console.log('从paperDetails.json加载失败:', error);
@@ -446,19 +379,42 @@ async function loadPaperDetails() {
         await IndexedDBManager.savePaperDetails(currentPaperId, paperDetails);
     }
     
-    console.log(`最终渲染的论文详情:`, paperDetails);
-    renderPaperDetails(paperDetails);
+    // 确保数据结构完整
+    const completePaperDetails = {
+        backgroundContent: paperDetails.backgroundContent || '请添加研究背景信息',
+        mainContent: paperDetails.mainContent || '请添加研究内容信息',
+        conclusionContent: paperDetails.conclusionContent || '请添加研究结论信息',
+        linkContent: paperDetails.linkContent || '暂无全文链接',
+        homepageImages: paperDetails.homepageImages || [],
+        keyImages: paperDetails.keyImages || []
+    };
+    
+    console.log(`最终渲染的论文详情:`, completePaperDetails);
+    renderPaperDetails(completePaperDetails);
 }
 
 // 渲染论文详情
 function renderPaperDetails(paperDetails) {
     console.log('渲染论文详情:', paperDetails);
     
-    // 渲染文字内容到对应的框里
-    document.getElementById('backgroundContent').innerHTML = formatTextWithParagraphs(paperDetails.backgroundContent);
-    document.getElementById('mainContent').innerHTML = formatTextWithParagraphs(paperDetails.mainContent);
-    document.getElementById('conclusionContent').innerHTML = formatTextWithParagraphs(paperDetails.conclusionContent);
-    document.getElementById('linkContent').innerHTML = formatLinkContent(paperDetails.linkContent);
+    // 渲染文字内容
+    const backgroundElement = document.getElementById('backgroundContent');
+    const mainElement = document.getElementById('mainContent');
+    const conclusionElement = document.getElementById('conclusionContent');
+    const linkElement = document.getElementById('linkContent');
+    
+    if (backgroundElement) {
+        backgroundElement.innerHTML = formatTextWithParagraphs(paperDetails.backgroundContent);
+    }
+    if (mainElement) {
+        mainElement.innerHTML = formatTextWithParagraphs(paperDetails.mainContent);
+    }
+    if (conclusionElement) {
+        conclusionElement.innerHTML = formatTextWithParagraphs(paperDetails.conclusionContent);
+    }
+    if (linkElement) {
+        linkElement.innerHTML = formatLinkContent(paperDetails.linkContent);
+    }
     
     // 渲染图片
     renderImages('homepageImages', paperDetails.homepageImages);
@@ -471,16 +427,14 @@ function formatTextWithParagraphs(text) {
         return '<p class="text-gray-500 italic">暂无内容</p>';
     }
     
-    // 将文本按换行分割成段落
     const paragraphs = text.split('\n').filter(p => p.trim() !== '');
     
     if (paragraphs.length === 0) {
         return '<p class="text-gray-500 italic">暂无内容</p>';
     }
     
-    // 为每个段落添加HTML
     return paragraphs.map(paragraph => 
-        `<p class="paragraph-content">${paragraph.trim().replace(/</g, '&lt;').replace(/>/g, '&gt;')}</p>`
+        `<p class="paragraph-content">${paragraph.trim()}</p>`
     ).join('');
 }
 
@@ -494,10 +448,9 @@ function formatLinkContent(content) {
     
     // 检查是否为URL
     const isUrl = content.startsWith('http://') || content.startsWith('https://') || 
-                  content.startsWith('www.') || content.includes('.');
+                  content.startsWith('www.');
     
     if (isUrl) {
-        // 确保URL有协议
         let url = content;
         if (!url.startsWith('http://') && !url.startsWith('https://')) {
             url = 'https://' + url;
@@ -519,21 +472,13 @@ function renderImages(containerId, images) {
     
     if (!images || images.length === 0) {
         container.innerHTML = '<p class="text-gray-500 text-center py-8">暂无图片</p>';
-        console.log(`容器 ${containerId} 没有图片数据`);
         return;
     }
     
     console.log(`渲染图片到 ${containerId}:`, images);
     
     container.innerHTML = images.map((image, index) => {
-        // 确保图片URL正确
         let imageUrl = image;
-        if (imageUrl && !imageUrl.startsWith('data:') && !imageUrl.startsWith('http')) {
-            // 如果是相对路径，尝试修复
-            if (imageUrl.startsWith('/')) {
-                imageUrl = imageUrl.substring(1);
-            }
-        }
         
         return `
         <div class="image-item bg-gray-100 rounded-lg overflow-hidden relative group mb-4" 
@@ -542,7 +487,6 @@ function renderImages(containerId, images) {
              data-image="${imageUrl}">
             <img src="${imageUrl}" alt="论文图片" 
                  class="w-full h-auto cursor-pointer"
-                 style="max-width: 100%; height: auto; display: block;"
                  onclick="openImageModal('${imageUrl.replace(/'/g, "\\'")}')">
             ${isLoggedIn ? `
             <div class="image-overlay absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
@@ -555,23 +499,7 @@ function renderImages(containerId, images) {
             </div>
             ` : ''}
         </div>
-    `).join('');
-    
-    // 图片加载错误处理
-    container.querySelectorAll('img').forEach(img => {
-        img.onerror = function() {
-            console.error('图片加载失败:', this.src);
-            this.style.display = 'none';
-            const parent = this.parentElement;
-            if (parent) {
-                parent.innerHTML = '<div class="p-4 text-center text-red-500">图片加载失败</div>';
-            }
-        };
-        
-        img.onload = function() {
-            console.log('图片加载成功:', this.src);
-        };
-    });
+    `}).join('');
 }
 
 // 初始化拖拽功能
@@ -595,22 +523,11 @@ function initDragAndDropForContainer(container, containerId) {
     const items = container.querySelectorAll('.image-item');
     
     items.forEach(item => {
-        // 移除旧的事件监听器
-        item.removeEventListener('dragstart', handleDragStart);
-        item.removeEventListener('dragover', handleDragOver);
-        item.removeEventListener('drop', handleDrop);
-        item.removeEventListener('dragend', handleDragEnd);
-        
-        // 添加新的事件监听器
+        // 添加事件监听器
         item.addEventListener('dragstart', handleDragStart);
         item.addEventListener('dragover', handleDragOver);
         item.addEventListener('drop', (e) => handleDrop(e, containerId));
         item.addEventListener('dragend', handleDragEnd);
-        
-        // 设置可拖拽
-        if (isLoggedIn) {
-            item.setAttribute('draggable', 'true');
-        }
     });
 }
 
@@ -716,46 +633,16 @@ async function savePaperDetails(paperDetails) {
 
 // 打开图片模态框
 function openImageModal(imageSrc) {
-    // 显示加载指示器
-    if (elements.imageLoading) {
-        elements.imageLoading.classList.add('show');
-    }
-    
-    // 重置缩放比例
-    currentScale = 1;
-    if (elements.modalImage) {
+    if (elements.imageModal && elements.modalImage) {
+        // 重置缩放比例
+        currentScale = 1;
         elements.modalImage.style.transform = 'scale(1)';
-    }
-    
-    // 设置图片源
-    if (elements.modalImage) {
-        elements.modalImage.src = imageSrc;
-    }
-    
-    // 显示模态框
-    if (elements.imageModal) {
-        elements.imageModal.classList.add('show');
-    }
-    
-    // 显示缩放控制按钮
-    if (elements.zoomInBtn) elements.zoomInBtn.classList.remove('hidden');
-    if (elements.zoomOutBtn) elements.zoomOutBtn.classList.remove('hidden');
-    if (elements.resetZoomBtn) elements.resetZoomBtn.classList.remove('hidden');
-    
-    // 图片加载完成后隐藏加载指示器
-    if (elements.modalImage) {
-        elements.modalImage.onload = function() {
-            if (elements.imageLoading) {
-                elements.imageLoading.classList.remove('show');
-            }
-        };
         
-        elements.modalImage.onerror = function() {
-            if (elements.imageLoading) {
-                elements.imageLoading.classList.remove('show');
-            }
-            console.error('模态框图片加载失败:', imageSrc);
-        };
+        // 设置图片源
+        elements.modalImage.src = imageSrc;
+        
+        // 显示模态框
+        elements.imageModal.classList.add('show');
     }
 }
 
@@ -764,17 +651,6 @@ function closeImageModal() {
     if (elements.imageModal) {
         elements.imageModal.classList.remove('show');
     }
-    
-    // 隐藏缩放控制按钮
-    if (elements.zoomInBtn) elements.zoomInBtn.classList.add('hidden');
-    if (elements.zoomOutBtn) elements.zoomOutBtn.classList.add('hidden');
-    if (elements.resetZoomBtn) elements.resetZoomBtn.classList.add('hidden');
-    
-    // 重置缩放比例
-    currentScale = 1;
-    if (elements.modalImage) {
-        elements.modalImage.style.transform = 'scale(1)';
-    }
 }
 
 // 图片缩放功能
@@ -782,7 +658,7 @@ function zoomIn() {
     if (!elements.modalImage) return;
     
     currentScale += 0.25;
-    if (currentScale > 3) currentScale = 3; // 最大缩放限制
+    if (currentScale > 3) currentScale = 3;
     elements.modalImage.style.transform = `scale(${currentScale})`;
 }
 
@@ -790,7 +666,7 @@ function zoomOut() {
     if (!elements.modalImage) return;
     
     currentScale -= 0.25;
-    if (currentScale < 0.5) currentScale = 0.5; // 最小缩放限制
+    if (currentScale < 0.5) currentScale = 0.5;
     elements.modalImage.style.transform = `scale(${currentScale})`;
 }
 
@@ -819,25 +695,17 @@ async function deleteImage(containerId, index) {
         // 重新渲染
         renderImages(containerId, paperDetails[containerId === 'homepageImages' ? 'homepageImages' : 'keyImages']);
         
-        // 重新初始化拖拽
-        setTimeout(() => {
-            const container = document.getElementById(containerId);
-            if (container) {
-                initDragAndDropForContainer(container, containerId);
-            }
-        }, 100);
-        
         showNotification('图片已删除', 'success');
     });
 }
 
-// 处理图片上传 - 修复版，确保无限制上传
+// 处理图片上传
 async function handleImageUpload(event, type) {
     const files = Array.from(event.target.files);
     
     if (files.length === 0) return;
     
-    // 清空文件输入，以便可以再次选择相同文件
+    // 清空文件输入
     event.target.value = '';
     
     // 显示上传提示
@@ -852,26 +720,16 @@ async function handleImageUpload(event, type) {
             : paperDetails.keyImages;
         
         // 处理所有图片文件
-        const uploadPromises = files.map(file => {
-            return new Promise((resolve) => {
-                const reader = new FileReader();
-                reader.onload = function(e) {
-                    // 压缩图片以节省空间
-                    compressImage(e.target.result, (compressedImage) => {
-                        targetArray.push(compressedImage);
-                        resolve();
-                    });
-                };
-                reader.onerror = function() {
-                    console.error('文件读取失败');
-                    resolve(); // 即使失败也继续处理其他文件
-                };
-                reader.readAsDataURL(file);
-            });
-        });
+        for (const file of files) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                targetArray.push(e.target.result);
+            };
+            reader.readAsDataURL(file);
+        }
         
-        // 等待所有图片上传完成
-        await Promise.all(uploadPromises);
+        // 等待图片加载
+        await new Promise(resolve => setTimeout(resolve, 500));
         
         // 保存数据
         await savePaperDetails(paperDetails);
@@ -879,55 +737,12 @@ async function handleImageUpload(event, type) {
         // 重新渲染
         renderImages(type === 'homepage' ? 'homepageImages' : 'keyImages', targetArray);
         
-        // 重新初始化拖拽
-        setTimeout(() => {
-            const container = document.getElementById(type === 'homepage' ? 'homepageImages' : 'keyImages');
-            if (container) {
-                initDragAndDropForContainer(container, type === 'homepage' ? 'homepageImages' : 'keyImages');
-            }
-        }, 100);
-        
         showNotification(`成功上传 ${files.length} 张图片`, 'success');
         
     } catch (error) {
         console.error('图片上传失败:', error);
         showNotification('图片上传失败，请重试', 'error');
     }
-}
-
-// 压缩图片以节省存储空间
-function compressImage(dataUrl, callback, maxWidth = 1200) {
-    const img = new Image();
-    img.src = dataUrl;
-    
-    img.onload = function() {
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
-        
-        // 计算压缩后的尺寸
-        let width = img.width;
-        let height = img.height;
-        
-        if (width > maxWidth) {
-            height = (height * maxWidth) / width;
-            width = maxWidth;
-        }
-        
-        canvas.width = width;
-        canvas.height = height;
-        
-        // 绘制压缩后的图片
-        ctx.drawImage(img, 0, 0, width, height);
-        
-        // 转换为jpeg格式，质量为0.8
-        const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.8);
-        callback(compressedDataUrl);
-    };
-    
-    img.onerror = function() {
-        // 如果压缩失败，使用原始图片
-        callback(dataUrl);
-    };
 }
 
 // 编辑研究背景
@@ -1012,13 +827,17 @@ async function editLinkContent() {
 
 // 登录功能
 function showLoginModal() {
-    elements.loginModal.classList.add('show');
-    document.getElementById('username').focus();
+    if (elements.loginModal) {
+        elements.loginModal.classList.add('show');
+        document.getElementById('username').focus();
+    }
 }
 
 function hideLoginModal() {
-    elements.loginModal.classList.remove('show');
-    elements.loginForm.reset();
+    if (elements.loginModal) {
+        elements.loginModal.classList.remove('show');
+        if (elements.loginForm) elements.loginForm.reset();
+    }
 }
 
 function handleLogin(e) {
@@ -1056,8 +875,9 @@ function updateUI() {
     const keyUpload = document.getElementById('keyUpload');
     
     if (isLoggedIn) {
-        elements.loginBtn.classList.add('hidden');
-        elements.logoutBtn.classList.remove('hidden');
+        if (elements.loginBtn) elements.loginBtn.classList.add('hidden');
+        if (elements.logoutBtn) elements.logoutBtn.classList.remove('hidden');
+        
         editBtns.forEach(btn => btn.classList.remove('hidden'));
         
         // 显示添加图片按钮和上传区域
@@ -1066,14 +886,10 @@ function updateUI() {
         if (homepageUpload) homepageUpload.classList.remove('hidden');
         if (keyUpload) keyUpload.classList.remove('hidden');
         
-        // 重新初始化拖拽
-        setTimeout(() => {
-            initDragAndDrop();
-        }, 100);
-        
     } else {
-        elements.loginBtn.classList.remove('hidden');
-        elements.logoutBtn.classList.add('hidden');
+        if (elements.loginBtn) elements.loginBtn.classList.remove('hidden');
+        if (elements.logoutBtn) elements.logoutBtn.classList.add('hidden');
+        
         editBtns.forEach(btn => btn.classList.add('hidden'));
         
         // 隐藏添加图片按钮和上传区域
@@ -1081,10 +897,6 @@ function updateUI() {
         if (addKeyBtn) addKeyBtn.classList.add('hidden');
         if (homepageUpload) homepageUpload.classList.add('hidden');
         if (keyUpload) keyUpload.classList.add('hidden');
-        
-        // 禁用拖拽
-        const imageItems = document.querySelectorAll('.image-item');
-        imageItems.forEach(item => item.setAttribute('draggable', 'false'));
     }
 }
 
@@ -1100,38 +912,32 @@ function showNotification(message, type = 'info') {
     
     document.body.appendChild(notification);
     
-    anime({
-        targets: notification,
-        translateX: [300, 0],
-        opacity: [0, 1],
-        duration: 300,
-        easing: 'easeOutQuad'
-    });
-    
     setTimeout(() => {
-        anime({
-            targets: notification,
-            translateX: [0, 300],
-            opacity: [1, 0],
-            duration: 300,
-            easing: 'easeInQuad',
-            complete: () => notification.remove()
-        });
+        notification.remove();
     }, 3000);
 }
 
 // 显示编辑模态框
 function showEditModal(title, content, saveCallback) {
-    document.getElementById('editModalTitle').textContent = title;
-    document.getElementById('editModalContent').innerHTML = content;
-    elements.editModal.classList.add('show');
+    const titleElement = document.getElementById('editModalTitle');
+    const contentElement = document.getElementById('editModalContent');
     
-    currentEditData = { saveCallback };
+    if (titleElement && contentElement) {
+        titleElement.textContent = title;
+        contentElement.innerHTML = content;
+        if (elements.editModal) {
+            elements.editModal.classList.add('show');
+        }
+        
+        currentEditData = { saveCallback };
+    }
 }
 
 // 隐藏编辑模态框
 function hideEditModal() {
-    elements.editModal.classList.remove('show');
+    if (elements.editModal) {
+        elements.editModal.classList.remove('show');
+    }
     currentEditData = null;
 }
 
@@ -1178,20 +984,13 @@ function showConfirmModal(message, callback) {
     confirmModal.querySelector('#cancelBtn').addEventListener('click', () => {
         confirmModal.remove();
     });
-    
-    // 点击背景关闭
-    confirmModal.addEventListener('click', (e) => {
-        if (e.target === confirmModal) {
-            confirmModal.remove();
-        }
-    });
 }
 
 // 触发图片上传
 function triggerImageUpload(type) {
-    if (type === 'homepage') {
+    if (type === 'homepage' && elements.homepageInput) {
         elements.homepageInput.click();
-    } else if (type === 'key') {
+    } else if (type === 'key' && elements.keyInput) {
         elements.keyInput.click();
     }
 }
@@ -1210,11 +1009,14 @@ document.addEventListener('DOMContentLoaded', function() {
 // 绑定所有事件
 function bindEvents() {
     // 登录相关
-    if (elements.loginBtn) elements.loginBtn.addEventListener('click', showLoginModal);
-    if (elements.logoutBtn) elements.logoutBtn.addEventListener('click', logout);
-    if (elements.loginForm) elements.loginForm.addEventListener('submit', handleLogin);
-    
+    const loginBtn = document.getElementById('loginBtn');
+    const logoutBtn = document.getElementById('logoutBtn');
+    const loginForm = document.getElementById('loginForm');
     const cancelLoginBtn = document.getElementById('cancelLogin');
+    
+    if (loginBtn) loginBtn.addEventListener('click', showLoginModal);
+    if (logoutBtn) logoutBtn.addEventListener('click', logout);
+    if (loginForm) loginForm.addEventListener('submit', handleLogin);
     if (cancelLoginBtn) cancelLoginBtn.addEventListener('click', hideLoginModal);
     
     // 编辑相关
@@ -1222,15 +1024,13 @@ function bindEvents() {
     const editMainContentBtn = document.getElementById('editMainContentBtn');
     const editConclusionBtn = document.getElementById('editConclusionBtn');
     const editLinkBtn = document.getElementById('editLinkBtn');
+    const saveEditBtn = document.getElementById('saveEdit');
+    const cancelEditBtn = document.getElementById('cancelEdit');
     
     if (editBackgroundBtn) editBackgroundBtn.addEventListener('click', editBackgroundContent);
     if (editMainContentBtn) editMainContentBtn.addEventListener('click', editMainContent);
     if (editConclusionBtn) editConclusionBtn.addEventListener('click', editConclusionContent);
     if (editLinkBtn) editLinkBtn.addEventListener('click', editLinkContent);
-    
-    const saveEditBtn = document.getElementById('saveEdit');
-    const cancelEditBtn = document.getElementById('cancelEdit');
-    
     if (saveEditBtn) saveEditBtn.addEventListener('click', saveEditContent);
     if (cancelEditBtn) cancelEditBtn.addEventListener('click', hideEditModal);
     
@@ -1249,11 +1049,10 @@ function bindEvents() {
     if (addHomepageBtn) addHomepageBtn.addEventListener('click', () => triggerImageUpload('homepage'));
     if (addKeyBtn) addKeyBtn.addEventListener('click', () => triggerImageUpload('key'));
     
-    // 图片模态框点击事件 - 点击任意位置关闭
+    // 图片模态框点击事件
     if (elements.imageModal) {
         elements.imageModal.addEventListener('click', function(e) {
-            // 如果点击的是图片模态框背景（不是图片本身），则关闭模态框
-            if (e.target === elements.imageModal || e.target === elements.modalImage) {
+            if (e.target === elements.imageModal) {
                 closeImageModal();
             }
         });
@@ -1277,11 +1076,7 @@ function bindEvents() {
         if (e.key === 'Escape') {
             const activeModal = document.querySelector('.modal.show');
             if (activeModal) {
-                if (activeModal === elements.imageModal) {
-                    closeImageModal();
-                } else {
-                    activeModal.classList.remove('show');
-                }
+                activeModal.classList.remove('show');
             }
         }
     });
