@@ -271,7 +271,8 @@ async function exportPaperDetailsData() {
                 totalPapers++;
                 
                 // 构建导出数据格式 - 与paper-detail.js完全匹配
-                exportData[paperId] = {
+                // 关键修复：确保paperId作为字符串键存储
+                exportData[String(paperId)] = {
                     backgroundContent: detail.backgroundContent || '暂无研究背景信息',
                     mainContent: detail.mainContent || '暂无研究内容信息',
                     conclusionContent: detail.conclusionContent || '暂无研究结论信息',
@@ -285,11 +286,11 @@ async function exportPaperDetailsData() {
                 totalImages += (detail.keyImages ? detail.keyImages.length : 0);
                 
                 console.log(`论文 ${paperId} 导出数据详情:`, {
-                    背景字数: exportData[paperId].backgroundContent.length,
-                    内容字数: exportData[paperId].mainContent.length,
-                    结论字数: exportData[paperId].conclusionContent.length,
-                    首页图片数: exportData[paperId].homepageImages.length,
-                    关键图片数: exportData[paperId].keyImages.length
+                    背景字数: exportData[String(paperId)].backgroundContent.length,
+                    内容字数: exportData[String(paperId)].mainContent.length,
+                    结论字数: exportData[String(paperId)].conclusionContent.length,
+                    首页图片数: exportData[String(paperId)].homepageImages.length,
+                    关键图片数: exportData[String(paperId)].keyImages.length
                 });
             }
         }
