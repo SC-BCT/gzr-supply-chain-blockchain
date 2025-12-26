@@ -162,9 +162,9 @@ async function initializePage() {
     // 初始化DOM元素引用
     initElements();
     
-    // 检查登录状态 - 同时检查sessionStorage和localStorage
-    isLoggedIn = sessionStorage.getItem('isLoggedIn') === 'true' || localStorage.getItem('isLoggedIn') === 'true';
-    console.log('登录状态:', isLoggedIn);
+    // 检查登录状态 - 只检查localStorage，确保不同页面间同步
+isLoggedIn = localStorage.getItem('isLoggedIn') === 'true';
+console.log('登录状态:', isLoggedIn);
     
     // 获取URL参数中的论文ID - 确保正确获取当前需要的论文ID
     const urlParams = new URLSearchParams(window.location.search);
@@ -1239,17 +1239,14 @@ function handleLogin(e) {
     
     if (username === '123' && password === '123') {
         isLoggedIn = true;
-        // 同时存储到sessionStorage和localStorage，确保不同页面间同步
-        sessionStorage.setItem('isLoggedIn', 'true');
+        // 只使用localStorage，确保不同页面间同步
         localStorage.setItem('isLoggedIn', 'true');
         hideLoginModal();
         updateUI();
         showNotification('登录成功！', 'success');
         
-        // 刷新页面以应用登录状态
-        setTimeout(() => {
-            window.location.reload();
-        }, 500);
+        // 立即启用拖拽功能（如果有图片）
+        setTimeout(initDragAndDrop, 100);
     } else {
         showNotification('用户名或密码错误！', 'error');
     }
@@ -1258,16 +1255,10 @@ function handleLogin(e) {
 // 退出登录
 function logout() {
     isLoggedIn = false;
-    // 同时清除sessionStorage和localStorage
-    sessionStorage.removeItem('isLoggedIn');
+    // 只清除localStorage
     localStorage.removeItem('isLoggedIn');
     updateUI();
     showNotification('已退出登录！', 'info');
-    
-    // 刷新页面以应用退出状态
-    setTimeout(() => {
-        window.location.reload();
-    }, 500);
 }
 
 // 更新UI
@@ -1500,6 +1491,7 @@ window.openImageModal = openImageModal;
 window.closeImageModal = closeImageModal;
 window.deleteImage = deleteImage;
 window.triggerImageUpload = triggerImageUpload;
+
 
 
 
