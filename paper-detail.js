@@ -156,6 +156,9 @@ class IndexedDBManager {
 async function initializePage() {
     console.log('开始初始化论文详情页');
     
+    // 先显示加载中的状态
+    document.body.classList.add('loading');
+    
     // 初始化DOM元素引用
     initElements();
     
@@ -168,24 +171,34 @@ async function initializePage() {
     currentPaperId = parseInt(urlParams.get('id')) || 1;
     console.log('当前论文ID:', currentPaperId);
     
+    // 立即更新基本信息区域（快速显示）
+    updateBasicInfoPlaceholder();
+    
+    // 预加载索引文件（不等待）
+    preloadPaperIndex();
+    
     try {
-        // 加载论文基本信息
-        await loadPaperBasicInfo();
-        
-        // 加载论文详情数据
-        await loadPaperDetails();
+        // 并行加载：基本信息 + 详情数据
+        const [basicInfoLoaded, detailsLoaded] = await Promise.allSettled([
+            loadPaperBasicInfo(),
+            loadPaperDetails()
+        ]);
         
         // 更新UI
         updateUI();
         
-        // 初始化拖拽功能
+        // 初始化拖拽功能（如果登录）
         if (isLoggedIn) {
-            setTimeout(initDragAndDrop, 500);
+            setTimeout(initDragAndDrop, 100);
         }
+        
+        // 显示完成状态
+        document.body.classList.remove('loading');
         
     } catch (error) {
         console.error('初始化失败:', error);
-        showNotification('页面初始化失败，请刷新重试', 'error');
+        showNotification('页面加载遇到问题，但已显示可用内容', 'warning');
+        document.body.classList.remove('loading');
     }
     
     // 添加动画效果
@@ -196,12 +209,20 @@ async function initializePage() {
                 targets: '.fade-in',
                 opacity: [0, 1],
                 translateY: [30, 0],
-                duration: 800,
-                delay: anime.stagger(200),
+                duration: 600,
+                delay: anime.stagger(100),
                 easing: 'easeOutQuad'
             });
         }
-    }, 100);
+    }, 50);
+}
+
+// 更新基本信息占位符（快速显示）
+function updateBasicInfoPlaceholder() {
+    const titleElement = document.getElementById('paperTitle');
+    if (titleElement) {
+        titleElement.textContent = `论文 #${currentPaperId}`;
+    }
 }
 
 // 加载论文基本信息
@@ -318,165 +339,100 @@ if (!paperDetails) {
     try {
         console.log('尝试从分页JSON文件加载数据...');
         
-        // 首先尝试加载索引文件确定应该加载哪个文件
+        // 方法1：使用预缓存的索引（性能最优）
         let targetFileName = null;
-        let fileIndexData = null;
         
+        // 首先从sessionStorage获取索引缓存（避免重复请求）
+        let fileIndexData = null;
         try {
-            const indexResponse = await fetch('paperIndex.json');
-            if (indexResponse.ok) {
-                fileIndexData = await indexResponse.json();
-                console.log('索引文件数据:', fileIndexData);
-                
-                // 查找包含当前论文ID的文件
-                for (const [fileName, fileInfo] of Object.entries(fileIndexData)) {
-                    // 检查论文ID是否在该文件的论文ID列表中
-                    if (fileInfo.paperIds && fileInfo.paperIds.includes(currentPaperId)) {
-                        targetFileName = fileName;
-                        console.log(`论文ID ${currentPaperId} 在文件 ${fileName} 中 (论文ID列表: ${fileInfo.paperIds.join(', ')})`);
-                        break;
-                    }
-                    // 备用检查：检查范围
-                    else if (fileInfo.range) {
-                        const [minId, maxId] = fileInfo.range;
-                        if (currentPaperId >= minId && currentPaperId <= maxId) {
-                            targetFileName = fileName;
-                            console.log(`论文ID ${currentPaperId} 在文件 ${fileName} 的范围内 (${minId}-${maxId})`);
-                            break;
-                        }
-                    }
+            const cachedIndex = sessionStorage.getItem('paperIndexCache');
+            const cacheTime = sessionStorage.getItem('paperIndexCacheTime');
+            
+            // 检查缓存是否有效（1小时内有效）
+            if (cachedIndex && cacheTime && (Date.now() - parseInt(cacheTime)) < 3600000) {
+                fileIndexData = JSON.parse(cachedIndex);
+                console.log('从sessionStorage加载索引缓存');
+            } else {
+                // 从网络加载并缓存
+                const indexResponse = await fetch('paperIndex.json');
+                if (indexResponse.ok) {
+                    fileIndexData = await indexResponse.json();
+                    // 缓存到sessionStorage
+                    sessionStorage.setItem('paperIndexCache', JSON.stringify(fileIndexData));
+                    sessionStorage.setItem('paperIndexCacheTime', Date.now().toString());
+                    console.log('从网络加载索引并缓存到sessionStorage');
                 }
             }
         } catch (indexError) {
-            console.log('索引文件不存在或加载失败，尝试直接按计算方式查找:', indexError);
-            fileIndexData = null;
+            console.log('索引文件处理失败，尝试直接按计算方式查找:', indexError);
         }
         
-        // 如果没有索引文件或找不到，按计算方式确定文件名
+        // 使用索引快速定位文件
+        if (fileIndexData) {
+            for (const [fileName, fileInfo] of Object.entries(fileIndexData)) {
+                // 优先使用paperIds查找（最精确）
+                if (fileInfo.paperIds && fileInfo.paperIds.includes(currentPaperId)) {
+                    targetFileName = fileName;
+                    console.log(`使用索引精确找到: 论文ID ${currentPaperId} 在文件 ${fileName} 中`);
+                    break;
+                }
+                // 其次使用范围查找
+                else if (fileInfo.range) {
+                    const [minId, maxId] = fileInfo.range;
+                    if (currentPaperId >= minId && currentPaperId <= maxId) {
+                        targetFileName = fileName;
+                        console.log(`使用索引范围找到: 论文ID ${currentPaperId} 在文件 ${fileName} 的范围内`);
+                        break;
+                    }
+                }
+            }
+        }
+        
+        // 方法2：如果索引不可用，直接计算文件名（O(1)复杂度）
         if (!targetFileName) {
             const fileNum = Math.ceil(currentPaperId / 5);
             const paddedNum = String(fileNum).padStart(2, '0');
             targetFileName = `paperDetails${paddedNum}.json`;
-            console.log(`通过计算确定文件: ${targetFileName} (论文ID: ${currentPaperId}, 分组: ${fileNum})`);
+            console.log(`通过计算确定文件: ${targetFileName} (论文ID: ${currentPaperId})`);
         }
         
-        // 加载目标文件
-        console.log(`正在加载文件: ${targetFileName}`);
+        // 加载目标文件（只加载需要的文件）
+        console.log(`加载文件: ${targetFileName}`);
         const response = await fetch(targetFileName);
         if (response.ok) {
             const jsonData = await response.json();
-            console.log(`从 ${targetFileName} 加载的数据:`, Object.keys(jsonData).length, '条记录');
             
-            // 尝试用数字ID和字符串ID两种方式查找
-            if (jsonData && typeof jsonData === 'object') {
-                if (jsonData[currentPaperId] || jsonData[String(currentPaperId)]) {
-                    paperDetails = jsonData[currentPaperId] || jsonData[String(currentPaperId)];
-                    console.log(`从 ${targetFileName} 找到论文${currentPaperId}的详情:`, {
-                        背景字数: paperDetails.backgroundContent ? paperDetails.backgroundContent.length : 0,
-                        内容字数: paperDetails.mainContent ? paperDetails.mainContent.length : 0,
-                        结论字数: paperDetails.conclusionContent ? paperDetails.conclusionContent.length : 0,
-                        首页图片数: paperDetails.homepageImages ? paperDetails.homepageImages.length : 0,
-                        关键图片数: paperDetails.keyImages ? paperDetails.keyImages.length : 0
-                    });
-                    
-                    // 确保数据结构完整
-                    const completePaperDetails = {
-                        backgroundContent: paperDetails.backgroundContent || '请添加研究背景信息',
-                        mainContent: paperDetails.mainContent || '请添加研究内容信息',
-                        conclusionContent: paperDetails.conclusionContent || '请添加研究结论信息',
-                        linkContent: paperDetails.linkContent || '暂无全文链接',
-                        homepageImages: paperDetails.homepageImages || [],
-                        keyImages: paperDetails.keyImages || []
-                    };
-                    
-                    // 保存到localStorage（文字内容）和IndexedDB（完整数据，包括图片）
-                    const localPaperDetails = DataManager.load('paperDetails', {});
-                    localPaperDetails[currentPaperId] = {
-                        backgroundContent: completePaperDetails.backgroundContent,
-                        mainContent: completePaperDetails.mainContent,
-                        conclusionContent: completePaperDetails.conclusionContent,
-                        linkContent: completePaperDetails.linkContent
-                        // 注意：localStorage不存储图片，图片存储在IndexedDB
-                    };
-                    DataManager.save('paperDetails', localPaperDetails);
-                    
-                    // 完整数据保存到IndexedDB
-                    await IndexedDBManager.savePaperDetails(currentPaperId, completePaperDetails);
-                    
-                    // 使用从JSON加载的数据
-                    paperDetails = completePaperDetails;
-                }
+            // 直接查找数据（使用数字键和字符串键两种方式）
+            const foundData = jsonData[currentPaperId] || jsonData[String(currentPaperId)];
+            
+            if (foundData) {
+                console.log(`从 ${targetFileName} 找到论文${currentPaperId}的详情`);
+                
+                // 构建完整数据
+                const completePaperDetails = {
+                    backgroundContent: foundData.backgroundContent || '请添加研究背景信息',
+                    mainContent: foundData.mainContent || '请添加研究内容信息',
+                    conclusionContent: foundData.conclusionContent || '请添加研究结论信息',
+                    linkContent: foundData.linkContent || '暂无全文链接',
+                    homepageImages: foundData.homepageImages || [],
+                    keyImages: foundData.keyImages || []
+                };
+                
+                // 立即保存到IndexedDB和localStorage（异步，不等待）
+                savePaperDetailsAsync(completePaperDetails);
+                
+                paperDetails = completePaperDetails;
+            } else {
+                console.warn(`文件 ${targetFileName} 中没有找到论文 ${currentPaperId} 的数据`);
             }
         }
     } catch (error) {
-        console.log('从分页JSON文件加载失败:', error);
+        console.log('从分页JSON文件加载失败，创建默认数据:', error);
+        // 快速创建默认数据，不尝试加载旧文件
+        paperDetails = createDefaultPaperDetails();
         
-        // 作为后备方案，尝试加载旧的单个文件
-        try {
-            console.log('尝试加载旧的 paperDetails.json 文件作为后备...');
-            const fallbackResponse = await fetch('paperDetails.json');
-            if (fallbackResponse.ok) {
-                const fallbackData = await fallbackResponse.json();
-                console.log('从旧文件加载的数据:', fallbackData);
-                
-                if (fallbackData && typeof fallbackData === 'object') {
-                    if (fallbackData[currentPaperId] || fallbackData[String(currentPaperId)]) {
-                        paperDetails = fallbackData[currentPaperId] || fallbackData[String(currentPaperId)];
-                        console.log(`从旧文件找到论文${currentPaperId}的详情:`, paperDetails);
-                        
-                        // 保存到localStorage和IndexedDB
-                        const localPaperDetails = DataManager.load('paperDetails', {});
-                        localPaperDetails[currentPaperId] = {
-                            backgroundContent: paperDetails.backgroundContent,
-                            mainContent: paperDetails.mainContent,
-                            conclusionContent: paperDetails.conclusionContent,
-                            linkContent: paperDetails.linkContent
-                        };
-                        DataManager.save('paperDetails', localPaperDetails);
-                        
-                        await IndexedDBManager.savePaperDetails(currentPaperId, {
-                            backgroundContent: paperDetails.backgroundContent || '请添加研究背景信息',
-                            mainContent: paperDetails.mainContent || '请添加研究内容信息',
-                            conclusionContent: paperDetails.conclusionContent || '请添加研究结论信息',
-                            linkContent: paperDetails.linkContent || '暂无全文链接',
-                            homepageImages: paperDetails.homepageImages || [],
-                            keyImages: paperDetails.keyImages || []
-                        });
-                    } else if (Array.isArray(fallbackData)) {
-                        const item = fallbackData.find(item => {
-                            const id = item.paperId || item.id;
-                            return id && (parseInt(id) === currentPaperId || String(id) === String(currentPaperId));
-                        });
-                        
-                        if (item) {
-                            paperDetails = item;
-                            console.log(`从数组格式找到论文${currentPaperId}的详情:`, paperDetails);
-                            
-                            // 保存到localStorage和IndexedDB
-                            const localPaperDetails = DataManager.load('paperDetails', {});
-                            localPaperDetails[currentPaperId] = {
-                                backgroundContent: paperDetails.backgroundContent,
-                                mainContent: paperDetails.mainContent,
-                                conclusionContent: paperDetails.conclusionContent,
-                                linkContent: paperDetails.linkContent
-                            };
-                            DataManager.save('paperDetails', localPaperDetails);
-                            
-                            await IndexedDBManager.savePaperDetails(currentPaperId, {
-                                backgroundContent: paperDetails.backgroundContent || '请添加研究背景信息',
-                                mainContent: paperDetails.mainContent || '请添加研究内容信息',
-                                conclusionContent: paperDetails.conclusionContent || '请添加研究结论信息',
-                                linkContent: paperDetails.linkContent || '暂无全文链接',
-                                homepageImages: paperDetails.homepageImages || [],
-                                keyImages: paperDetails.keyImages || []
-                            });
-                        }
-                    }
-                }
-            }
-        } catch (fallbackError) {
-            console.log('旧文件加载也失败:', fallbackError);
-        }
+        // 异步保存默认数据
+        savePaperDetailsAsync(paperDetails);
     }
 }
     
@@ -583,7 +539,7 @@ function formatLinkContent(content) {
     return content;
 }
 
-// 渲染图片
+// 渲染图片（添加懒加载）
 function renderImages(containerId, images) {
     const container = document.getElementById(containerId);
     if (!container) {
@@ -596,19 +552,16 @@ function renderImages(containerId, images) {
         return;
     }
     
-    console.log(`渲染图片到 ${containerId}:`, images);
+    console.log(`渲染图片到 ${containerId}: ${images.length} 张图片`);
     
+    // 先显示占位符
     container.innerHTML = images.map((image, index) => {
-        let imageUrl = image;
-        
         return `
-        <div class="image-item bg-gray-100 rounded-lg overflow-hidden relative group mb-4" 
+        <div class="image-item bg-gray-200 rounded-lg overflow-hidden relative group mb-4 min-h-[200px] flex items-center justify-center" 
              data-id="${index}" 
              draggable="${isLoggedIn ? 'true' : 'false'}"
-             data-image="${imageUrl}">
-            <img src="${imageUrl}" alt="论文图片" 
-                 class="w-full h-auto cursor-pointer"
-                 onclick="openImageModal('${imageUrl.replace(/'/g, "\\'")}')">
+             data-image="${image}">
+            <div class="text-gray-500">加载图片中...</div>
             ${isLoggedIn ? `
             <div class="image-overlay absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
                 <button onclick="deleteImage('${containerId}', ${index})" 
@@ -621,6 +574,34 @@ function renderImages(containerId, images) {
             ` : ''}
         </div>
     `}).join('');
+    
+    // 延迟加载图片（提升页面响应速度）
+    setTimeout(() => {
+        images.forEach((image, index) => {
+            const img = new Image();
+            img.onload = function() {
+                const item = container.querySelector(`.image-item[data-id="${index}"]`);
+                if (item) {
+                    item.innerHTML = `
+                        <img src="${image}" alt="论文图片" 
+                             class="w-full h-auto cursor-pointer lazy-image loaded"
+                             onclick="openImageModal('${image.replace(/'/g, "\\'")}')">
+                        ${isLoggedIn ? `
+                        <div class="image-overlay absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                            <button onclick="deleteImage('${containerId}', ${index})" 
+                                    class="bg-red-500 hover:bg-red-600 text-white p-2 rounded-full shadow-lg">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                                </svg>
+                            </button>
+                        </div>
+                        ` : ''}
+                    `;
+                }
+            };
+            img.src = image;
+        });
+    }, 100);
 }
 
 // 初始化拖拽功能
@@ -1232,6 +1213,7 @@ window.openImageModal = openImageModal;
 window.closeImageModal = closeImageModal;
 window.deleteImage = deleteImage;
 window.triggerImageUpload = triggerImageUpload;
+
 
 
 
