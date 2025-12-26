@@ -162,8 +162,8 @@ async function initializePage() {
     // 初始化DOM元素引用
     initElements();
     
-    // 检查登录状态
-    isLoggedIn = sessionStorage.getItem('isLoggedIn') === 'true';
+    // 检查登录状态 - 同时检查sessionStorage和localStorage
+    isLoggedIn = sessionStorage.getItem('isLoggedIn') === 'true' || localStorage.getItem('isLoggedIn') === 'true';
     console.log('登录状态:', isLoggedIn);
     
     // 获取URL参数中的论文ID - 确保正确获取当前需要的论文ID
@@ -186,42 +186,38 @@ async function initializePage() {
     // 立即更新基本信息区域（快速显示）
     updateBasicInfoPlaceholder();
     
-    try {
-        // 只加载当前论文的基本信息和详情数据
-        const [basicInfoLoaded, detailsLoaded] = await Promise.allSettled([
-            loadPaperBasicInfo(currentPaperId),  // 传入当前论文ID
-            loadPaperDetails(currentPaperId)     // 传入当前论文ID
-        ]);
-        
-        // 先更新文字内容，快速显示给用户
-        updateTextContent();
-        
-        // 延迟加载图片，不阻塞文字显示
-        setTimeout(() => {
-            loadPaperImages(currentPaperId);
-        }, 500);
-        
-        // 更新UI
-        updateUI();
-        
-        // 初始化拖拽功能（如果登录）
-        if (isLoggedIn) {
-            setTimeout(initDragAndDrop, 100);
-        }
-        
-        // 显示完成状态
+try {
+    // 立即隐藏加载指示器，然后异步加载数据
+    setTimeout(() => {
         document.getElementById('loadingIndicator').style.opacity = '0';
         setTimeout(() => {
             document.getElementById('loadingIndicator').style.display = 'none';
         }, 300);
-        
-    } catch (error) {
-        console.error('初始化失败:', error);
+    }, 300);
+    
+    // 并行加载基本信息，不等待详情数据
+    loadPaperBasicInfo(currentPaperId).then(() => {
+        // 基本信息加载完成后，异步加载详情（不阻塞页面）
+        setTimeout(() => {
+            loadPaperDetails(currentPaperId).then(() => {
+                // 初始化拖拽功能（如果登录）
+                if (isLoggedIn) {
+                    setTimeout(initDragAndDrop, 100);
+                }
+            });
+        }, 100);
+    });
+    
+} catch (error) {
+    console.error('初始化失败:', error);
+    // 即使出错也要隐藏加载指示器
+    setTimeout(() => {
         document.getElementById('loadingIndicator').style.opacity = '0';
         setTimeout(() => {
             document.getElementById('loadingIndicator').style.display = 'none';
         }, 300);
-    }
+    }, 300);
+}
     
     // 添加动画效果
     setTimeout(() => {
@@ -671,30 +667,39 @@ async function getPaperDetailsById(paperId, forceRefresh = false) {
     let paperDetails = null;
     let source = null;
     
-    // 1. 强制刷新或未缓存时，从网络加载
-    if (forceRefresh) {
-        try {
-            const networkData = await loadFromJSONFile();
-            if (networkData) {
-                paperDetails = networkData;
-                source = 'network';
-            }
-        } catch (error) {
-            console.log('强制刷新时网络加载失败:', error);
+// 1. 强制刷新时，从网络加载
+if (forceRefresh) {
+    try {
+        const networkData = await loadFromJSONFile();
+        if (networkData) {
+            paperDetails = networkData;
+            source = 'network';
         }
-    } 
-    // 2. 优先从网络加载最新数据
-    else {
-        try {
-            const networkData = await loadFromJSONFile();
-            if (networkData) {
-                paperDetails = networkData;
-                source = 'network';
-            }
-        } catch (error) {
-            console.log('网络加载失败，尝试本地数据:', error);
-        }
+    } catch (error) {
+        console.log('强制刷新时网络加载失败:', error);
     }
+} 
+// 2. 非强制刷新时，优先从本地加载，网络请求在后台进行
+else {
+    // 先尝试本地数据源
+    // ...
+    // 然后异步尝试网络（不阻塞主线程）
+    setTimeout(async () => {
+        try {
+            const networkData = await loadFromJSONFile();
+            if (networkData) {
+                // 检查是否需要更新本地数据
+                const localDetails = await IndexedDBManager.getPaperDetails(paperId);
+                if (localDetails && JSON.stringify(networkData) !== JSON.stringify(localDetails)) {
+                    await IndexedDBManager.savePaperDetails(paperId, networkData);
+                    console.log(`论文${paperId}详情已从网络更新`);
+                }
+            }
+        } catch (error) {
+            console.log('后台网络加载失败:', error);
+        }
+    }, 1000); // 延迟1秒执行，不阻塞页面
+}
     
     // 3. 网络加载失败时，从IndexedDB获取
     if (!paperDetails) {
@@ -734,6 +739,26 @@ async function getPaperDetailsById(paperId, forceRefresh = false) {
 
 // 从JSON文件加载数据
 async function loadFromJSONFile() {
+
+    // 设置请求超时（5秒）
+const controller = new AbortController();
+const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+try {
+    // ... 原有的fetch请求改为：
+    // const response = await fetch(fileName, { signal: controller.signal });
+    // 或者
+    // const indexResponse = await fetch('paperIndex.json', { signal: controller.signal });
+} catch (error) {
+    if (error.name === 'AbortError') {
+        console.log(`请求超时: ${fileName}`);
+        return null;
+    }
+    throw error;
+} finally {
+    clearTimeout(timeoutId);
+}
+    
     try {
         console.log('尝试从单个论文JSON文件加载数据...');
         
@@ -1177,10 +1202,17 @@ function handleLogin(e) {
     
     if (username === '123' && password === '123') {
         isLoggedIn = true;
+        // 同时存储到sessionStorage和localStorage，确保不同页面间同步
         sessionStorage.setItem('isLoggedIn', 'true');
+        localStorage.setItem('isLoggedIn', 'true');
         hideLoginModal();
         updateUI();
         showNotification('登录成功！', 'success');
+        
+        // 刷新页面以应用登录状态
+        setTimeout(() => {
+            window.location.reload();
+        }, 500);
     } else {
         showNotification('用户名或密码错误！', 'error');
     }
@@ -1189,9 +1221,16 @@ function handleLogin(e) {
 // 退出登录
 function logout() {
     isLoggedIn = false;
+    // 同时清除sessionStorage和localStorage
     sessionStorage.removeItem('isLoggedIn');
+    localStorage.removeItem('isLoggedIn');
     updateUI();
     showNotification('已退出登录！', 'info');
+    
+    // 刷新页面以应用退出状态
+    setTimeout(() => {
+        window.location.reload();
+    }, 500);
 }
 
 // 更新UI
@@ -1424,6 +1463,7 @@ window.openImageModal = openImageModal;
 window.closeImageModal = closeImageModal;
 window.deleteImage = deleteImage;
 window.triggerImageUpload = triggerImageUpload;
+
 
 
 
