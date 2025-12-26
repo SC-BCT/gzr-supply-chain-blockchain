@@ -217,7 +217,6 @@ async function initializePage() {
         
     } catch (error) {
         console.error('初始化失败:', error);
-        showNotification('页面加载遇到问题，但已显示可用内容', 'warning');
         document.getElementById('loadingIndicator').style.opacity = '0';
         setTimeout(() => {
             document.getElementById('loadingIndicator').style.display = 'none';
@@ -1379,6 +1378,7 @@ window.openImageModal = openImageModal;
 window.closeImageModal = closeImageModal;
 window.deleteImage = deleteImage;
 window.triggerImageUpload = triggerImageUpload;
+
 
 
 
