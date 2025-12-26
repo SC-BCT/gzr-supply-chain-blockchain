@@ -336,68 +336,35 @@ function renderPaperBasicInfo(paper) {
     if (authorsElement) authorsElement.textContent = paper.authors || '';
 }
 
-// 加载论文详情数据 - 修复版（JSON优先）
+// 加载论文详情数据（新版，依赖getPaperDetailsById）
 async function loadPaperDetails() {
     console.log(`开始加载论文${currentPaperId}的详情数据`);
     
-    let paperDetails = null;
-    
-    // 检查URL中是否有强制刷新参数
-    const urlParams = new URLSearchParams(window.location.search);
-    const forceRefresh = urlParams.get('refresh') === 'true';
-    
-    // 方法1：总是先尝试从JSON文件加载最新数据
-    if (!forceRefresh) {
-        try {
-            // 使用索引文件快速定位
-            paperDetails = await loadFromJSONFile();
-            if (paperDetails) {
-                console.log(`从JSON文件获取到论文${currentPaperId}的最新数据`);
-                
-                // 立即显示JSON数据，然后异步保存到本地
-                const completePaperDetails = ensurePaperDetailsStructure(paperDetails);
-                renderPaperDetails(completePaperDetails);
-                
-                // 异步保存到本地存储（不阻塞显示）
-                savePaperDetailsAsync(completePaperDetails);
-                return; // 直接返回，不继续执行下面的代码
-            }
-        } catch (error) {
-            console.log('从JSON文件加载失败，尝试本地数据:', error);
-        }
-    }
-    
-    // 方法2：如果JSON加载失败，使用本地数据
-    // 1. 从IndexedDB加载
     try {
-        const indexedDBData = await IndexedDBManager.getPaperDetails(currentPaperId);
-        if (indexedDBData) {
-            console.log(`从IndexedDB获取到论文${currentPaperId}的详情`);
-            paperDetails = indexedDBData;
+        // 检查URL中是否有强制刷新参数
+        const urlParams = new URLSearchParams(window.location.search);
+        const forceRefresh = urlParams.get('refresh') === 'true';
+        
+        // 调用新函数获取论文详情
+        const paperDetails = await getPaperDetailsById(currentPaperId, forceRefresh);
+        
+        // 确保数据结构完整
+        const completePaperDetails = ensurePaperDetailsStructure(paperDetails);
+        console.log(`最终渲染的论文详情:`, completePaperDetails);
+        
+        // 渲染数据
+        renderPaperDetails(completePaperDetails);
+        
+        // 如果是从网络获取的新数据，异步保存到本地
+        if (!forceRefresh && paperDetails.source === 'network') {
+            savePaperDetailsAsync(completePaperDetails);
         }
     } catch (error) {
-        console.log('从IndexedDB加载失败:', error);
+        console.error('加载论文详情失败:', error);
+        // 显示默认数据
+        const defaultDetails = createDefaultPaperDetails();
+        renderPaperDetails(defaultDetails);
     }
-    
-    // 2. 从localStorage加载
-    if (!paperDetails) {
-        const localPaperDetails = DataManager.load('paperDetails', {});
-        if (localPaperDetails[currentPaperId] || localPaperDetails[String(currentPaperId)]) {
-            paperDetails = localPaperDetails[currentPaperId] || localPaperDetails[String(currentPaperId)];
-            console.log(`从localStorage获取到论文${currentPaperId}的详情`);
-        }
-    }
-    
-    // 方法3：创建默认数据
-    if (!paperDetails) {
-        console.log(`为论文${currentPaperId}创建默认详情数据`);
-        paperDetails = createDefaultPaperDetails();
-    }
-    
-    // 确保数据结构完整
-    const completePaperDetails = ensurePaperDetailsStructure(paperDetails);
-    console.log(`最终渲染的论文详情:`, completePaperDetails);
-    renderPaperDetails(completePaperDetails);
 }
 
 // 确保数据结构完整的辅助函数
@@ -696,6 +663,72 @@ async function getCurrentPaperDetails() {
         linkContent: paperDetails.linkContent || '暂无全文链接',
         homepageImages: paperDetails.homepageImages || [],
         keyImages: paperDetails.keyImages || []
+    };
+}
+
+// 新增：根据论文ID获取详情（整合所有数据源逻辑）
+async function getPaperDetailsById(paperId, forceRefresh = false) {
+    let paperDetails = null;
+    let source = null;
+    
+    // 1. 强制刷新或未缓存时，从网络加载
+    if (forceRefresh) {
+        try {
+            const networkData = await loadFromJSONFile();
+            if (networkData) {
+                paperDetails = networkData;
+                source = 'network';
+            }
+        } catch (error) {
+            console.log('强制刷新时网络加载失败:', error);
+        }
+    } 
+    // 2. 优先从网络加载最新数据
+    else {
+        try {
+            const networkData = await loadFromJSONFile();
+            if (networkData) {
+                paperDetails = networkData;
+                source = 'network';
+            }
+        } catch (error) {
+            console.log('网络加载失败，尝试本地数据:', error);
+        }
+    }
+    
+    // 3. 网络加载失败时，从IndexedDB获取
+    if (!paperDetails) {
+        try {
+            const indexedDBData = await IndexedDBManager.getPaperDetails(paperId);
+            if (indexedDBData) {
+                paperDetails = indexedDBData;
+                source = 'indexedDB';
+            }
+        } catch (error) {
+            console.log('IndexedDB加载失败:', error);
+        }
+    }
+    
+    // 4. IndexedDB无数据时，从localStorage获取
+    if (!paperDetails) {
+        const localPaperDetails = DataManager.load('paperDetails', {});
+        const storedData = localPaperDetails[paperId] || localPaperDetails[String(paperId)];
+        if (storedData) {
+            paperDetails = storedData;
+            source = 'localStorage';
+        }
+    }
+    
+    // 5. 所有来源都无数据时，创建默认数据
+    if (!paperDetails) {
+        paperDetails = createDefaultPaperDetails();
+        source = 'default';
+    }
+    
+    // 返回数据及来源信息
+    return {
+        ...paperDetails,
+        source: source
     };
 }
 
@@ -1378,6 +1411,7 @@ window.openImageModal = openImageModal;
 window.closeImageModal = closeImageModal;
 window.deleteImage = deleteImage;
 window.triggerImageUpload = triggerImageUpload;
+
 
 
 
