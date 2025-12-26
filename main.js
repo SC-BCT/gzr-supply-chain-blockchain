@@ -179,52 +179,45 @@ function getAllPaperIds() {
     }
 }
 
-// 获取所有论文详情数据
-async function getAllPaperDetails() {
-    console.log('开始获取所有论文详情数据...');
+// 按需获取单篇论文详情数据
+async function getPaperDetailsById(paperId) {
+    console.log(`开始获取论文ID: ${paperId} 的详情数据...`);
     
-    // 获取所有论文ID
-    const paperIds = getAllPaperIds();
-    console.log('所有论文ID:', paperIds);
-    
-    // 尝试从IndexedDB获取
-    let indexedDBData = {};
+    // 先从IndexedDB获取
     try {
-        indexedDBData = await getAllPaperDetailsFromIndexedDB();
-        console.log('从IndexedDB获取到数据:', Object.keys(indexedDBData).length, '篇论文');
+        const indexedDBData = await getPaperDetailsFromIndexedDB(paperId);
+        if (indexedDBData) {
+            console.log(`从IndexedDB获取到论文ID: ${paperId} 的数据`);
+            return indexedDBData;
+        }
     } catch (error) {
-        console.log('从IndexedDB获取数据失败:', error);
+        console.log(`从IndexedDB获取论文ID: ${paperId} 数据失败:`, error);
     }
     
-    // 从localStorage获取
+    // 再从localStorage获取
     const localStorageData = getPaperDetailsFromLocalStorage();
-    console.log('从localStorage获取到数据:', Object.keys(localStorageData).length, '篇论文');
+    if (localStorageData[paperId]) {
+        console.log(`从localStorage获取到论文ID: ${paperId} 的数据`);
+        return localStorageData[paperId];
+    }
     
-    // 合并数据：优先使用IndexedDB的数据，然后补充localStorage的数据
-    const mergedData = { ...localStorageData, ...indexedDBData };
-    
-    // 确保所有论文ID都有数据
-    const finalData = {};
-    paperIds.forEach(paperId => {
-        if (mergedData[paperId]) {
-            finalData[paperId] = mergedData[paperId];
-        } else {
-            // 如果该论文没有详情数据，创建默认数据
-            finalData[paperId] = {
-                paperId: paperId,
-                backgroundContent: '暂无研究背景信息',
-                mainContent: '暂无研究内容信息',
-                conclusionContent: '暂无研究结论信息',
-                linkContent: '暂无全文链接',
-                homepageImages: [],
-                keyImages: []
-            };
-            console.log(`为论文ID ${paperId} 创建默认详情数据`);
-        }
-    });
-    
-    console.log('最终合并的论文详情数据:', Object.keys(finalData).length, '篇论文');
-    return finalData;
+    // 如果都没有，返回默认数据
+    console.log(`未找到论文ID: ${paperId} 的数据，使用默认数据`);
+    return {
+        paperId: paperId,
+        backgroundContent: '暂无研究背景信息',
+        mainContent: '暂无研究内容信息',
+        conclusionContent: '暂无研究结论信息',
+        linkContent: '暂无全文链接',
+        homepageImages: [],
+        keyImages: []
+    };
+}
+
+// 保留获取所有论文ID的函数，用于导航等功能
+function getAllPaperIds() {
+    // 原有的获取所有论文ID的逻辑
+    // ...
 }
 
 // 导出首页数据为JSON文件
@@ -1606,5 +1599,6 @@ window.editStudent = editStudent;
 window.deleteStudent = deleteStudent;
 window.editConference = editConference;
 window.deleteConference = deleteConference;
+
 
 
