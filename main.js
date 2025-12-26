@@ -1530,3 +1530,4 @@ window.deleteStudent = deleteStudent;
 window.editConference = editConference;
 window.deleteConference = deleteConference;
 
+
