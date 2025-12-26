@@ -722,6 +722,56 @@ async function getCurrentPaperDetails() {
     };
 }
 
+// 异步保存论文详情（不阻塞主线程）
+async function savePaperDetailsAsync(paperDetails) {
+    setTimeout(async () => {
+        try {
+            // 保存到localStorage（仅文本）
+            const localPaperDetails = DataManager.load('paperDetails', {});
+            localPaperDetails[currentPaperId] = {
+                backgroundContent: paperDetails.backgroundContent,
+                mainContent: paperDetails.mainContent,
+                conclusionContent: paperDetails.conclusionContent,
+                linkContent: paperDetails.linkContent
+            };
+            DataManager.save('paperDetails', localPaperDetails);
+            
+            // 保存到IndexedDB（完整数据）
+            await IndexedDBManager.savePaperDetails(currentPaperId, paperDetails);
+            console.log(`论文${currentPaperId}详情已异步保存到存储`);
+        } catch (error) {
+            console.error('异步保存失败:', error);
+        }
+    }, 0);
+}
+
+// 创建默认论文详情
+function createDefaultPaperDetails() {
+    return {
+        backgroundContent: '请添加研究背景信息',
+        mainContent: '请添加研究内容信息',
+        conclusionContent: '请添加研究结论信息',
+        linkContent: '暂无全文链接',
+        homepageImages: [],
+        keyImages: []
+    };
+}
+
+// 预加载常见论文的索引文件
+function preloadPaperIndex() {
+    // 如果索引文件可能较大，可以预加载
+    if (!sessionStorage.getItem('paperIndexCache')) {
+        fetch('paperIndex.json')
+            .then(response => response.json())
+            .then(data => {
+                sessionStorage.setItem('paperIndexCache', JSON.stringify(data));
+                sessionStorage.setItem('paperIndexCacheTime', Date.now().toString());
+                console.log('预加载索引文件完成');
+            })
+            .catch(error => console.log('预加载索引文件失败:', error));
+    }
+}
+
 // 保存论文详情数据
 async function savePaperDetails(paperDetails) {
     // 保存到localStorage
@@ -1213,6 +1263,7 @@ window.openImageModal = openImageModal;
 window.closeImageModal = closeImageModal;
 window.deleteImage = deleteImage;
 window.triggerImageUpload = triggerImageUpload;
+
 
 
 
