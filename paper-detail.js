@@ -156,8 +156,8 @@ class IndexedDBManager {
 async function initializePage() {
     console.log('开始初始化论文详情页');
     
-    // 先显示加载中的状态
-    document.body.classList.add('loading');
+// 先显示加载中的状态
+document.getElementById('loadingIndicator').style.display = 'flex';
     
     // 初始化DOM元素引用
     initElements();
@@ -192,13 +192,19 @@ async function initializePage() {
             setTimeout(initDragAndDrop, 100);
         }
         
-        // 显示完成状态
-        document.body.classList.remove('loading');
+// 显示完成状态
+document.getElementById('loadingIndicator').style.opacity = '0';
+setTimeout(() => {
+    document.getElementById('loadingIndicator').style.display = 'none';
+}, 300);
         
     } catch (error) {
         console.error('初始化失败:', error);
-        showNotification('页面加载遇到问题，但已显示可用内容', 'warning');
-        document.body.classList.remove('loading');
+showNotification('页面加载遇到问题，但已显示可用内容', 'warning');
+document.getElementById('loadingIndicator').style.opacity = '0';
+setTimeout(() => {
+    document.getElementById('loadingIndicator').style.display = 'none';
+}, 300);
     }
     
     // 添加动画效果
@@ -1356,6 +1362,7 @@ window.openImageModal = openImageModal;
 window.closeImageModal = closeImageModal;
 window.deleteImage = deleteImage;
 window.triggerImageUpload = triggerImageUpload;
+
 
 
 
