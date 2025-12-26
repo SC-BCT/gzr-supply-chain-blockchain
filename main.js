@@ -405,68 +405,92 @@ async function exportAllData() {
 async function initializePage() {
     console.log('开始初始化页面...');
     
+    // 显示加载指示器
+    const loadingIndicator = document.getElementById('loadingIndicator');
+    if (loadingIndicator) {
+        loadingIndicator.style.display = 'flex';
+    }
+    
     // 检查登录状态
     isLoggedIn = sessionStorage.getItem('isLoggedIn') === 'true';
     console.log('登录状态:', isLoggedIn);
     
     try {
-        // 从data.json加载数据
-        const response = await fetch('data.json');
-        if (!response.ok) {
-            throw new Error('无法加载数据文件');
+        // 并行处理：数据加载和IndexedDB初始化
+        const [jsonData] = await Promise.all([
+            // 加载data.json
+            fetch('data.json')
+                .then(response => {
+                    if (!response.ok) throw new Error('无法加载数据文件');
+                    return response.json();
+                })
+                .catch(() => null), // 失败时返回null
+            
+            // 初始化IndexedDB（并行执行）
+            initIndexedDB().catch(error => {
+                console.log('IndexedDB初始化失败，将使用localStorage:', error);
+            })
+        ]);
+        
+        // 确定要使用的项目数据
+        let projectData;
+        if (jsonData) {
+            projectData = jsonData;
+            DataManager.save('projectData', projectData); // 保存到localStorage
+        } else {
+            // 从localStorage加载
+            projectData = DataManager.load('projectData') || defaultData;
+            if (!DataManager.load('projectData')) {
+                DataManager.save('projectData', projectData);
+            }
         }
         
-        const jsonData = await response.json();
+        // 先隐藏加载状态，再渲染内容（避免闪烁）
+        if (loadingIndicator) {
+            loadingIndicator.style.opacity = '0';
+            setTimeout(() => {
+                loadingIndicator.style.display = 'none';
+                // 渲染所有内容
+                renderAllContent(projectData);
+                
+                // 添加入场动画
+                anime({
+                    targets: '.fade-in',
+                    opacity: [0, 1],
+                    translateY: [30, 0],
+                    duration: 800,
+                    delay: anime.stagger(200),
+                    easing: 'easeOutQuad'
+                });
+            }, 300); // 配合透明度动画的延迟
+        } else {
+            renderAllContent(projectData);
+            // 添加入场动画
+            anime({
+                targets: '.fade-in',
+                opacity: [0, 1],
+                translateY: [30, 0],
+                duration: 800,
+                delay: anime.stagger(200),
+                easing: 'easeOutQuad'
+            });
+        }
         
-        // 直接使用data.json中的数据，不需要解析字符串
-        const projectData = jsonData;
-        
-        // 保存到localStorage（以便离线使用）
+    } catch (error) {
+        console.error('初始化失败:', error);
+        // 从localStorage加载保底数据
+        const projectData = DataManager.load('projectData') || defaultData;
         DataManager.save('projectData', projectData);
         
-        // 初始化IndexedDB
-        try {
-            await initIndexedDB();
-        } catch (error) {
-            console.log('IndexedDB初始化失败，将使用localStorage:', error);
+        // 隐藏加载状态并渲染
+        if (loadingIndicator) {
+            loadingIndicator.style.display = 'none';
         }
-        
-        // 渲染所有内容
-        renderAllContent(projectData);
-    } catch (error) {
-        console.error('加载数据失败:', error);
-        
-        // 如果加载失败，尝试从localStorage加载
-        let projectData = DataManager.load('projectData');
-        if (!projectData) {
-            // 如果localStorage也没有，使用空白数据
-            projectData = defaultData;
-            DataManager.save('projectData', projectData);
-        }
-        
-        // 初始化IndexedDB
-        try {
-            await initIndexedDB();
-        } catch (error) {
-            console.log('IndexedDB初始化失败:', error);
-        }
-        
-        // 渲染内容
         renderAllContent(projectData);
     }
     
     // 加载自定义背景
     loadCustomBackground();
-    
-    // 添加动画
-    anime({
-        targets: '.fade-in',
-        opacity: [0, 1],
-        translateY: [30, 0],
-        duration: 800,
-        delay: anime.stagger(200),
-        easing: 'easeOutQuad'
-    });
     
     // 更新UI（确保登录状态正确显示）
     updateUI();
@@ -1582,4 +1606,5 @@ window.editStudent = editStudent;
 window.deleteStudent = deleteStudent;
 window.editConference = editConference;
 window.deleteConference = deleteConference;
+
 
