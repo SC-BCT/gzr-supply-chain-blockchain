@@ -227,6 +227,24 @@ async function getAllPaperDetails() {
     return finalData;
 }
 
+// 导出首页数据为JSON文件
+function exportMainData() {
+    const projectData = DataManager.load('projectData', defaultData);
+    const jsonStr = JSON.stringify(projectData, null, 2);
+    const blob = new Blob([jsonStr], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'data.json';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    
+    showNotification('首页数据已导出为 data.json', 'success');
+}
+
 // 导出论文详情数据为多个JSON文件 - 分开存储版本
 async function exportPaperDetailsData() {
     try {
@@ -1529,5 +1547,6 @@ window.editStudent = editStudent;
 window.deleteStudent = deleteStudent;
 window.editConference = editConference;
 window.deleteConference = deleteConference;
+
 
 
